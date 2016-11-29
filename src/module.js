@@ -1,5 +1,7 @@
 /*jshint worker: true*/
 
+import './utils/polyfills';
+
 // The leaflet layer plugin is currently the primary public API
 import {leafletLayer} from './leaflet_layer';
 

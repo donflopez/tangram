@@ -166,7 +166,7 @@ Object.assign(self, {
 
                     // Warn and continue on data source error
                     if (tile.source_data.error) {
-                        log('warn', `tile load error(s) for ${tile.key}: ${tile.source_data.error.stack}`);
+                        log('warn', `tile load error(s) for ${tile.key}: ${tile.source_data.error}`);
                     }
 
                     tile.loading = false;
@@ -205,7 +205,7 @@ Object.assign(self, {
             return self.sources.tiles[tile.source].load(tile);
         }
         else {
-            tile.source_data = { error: `Data source '${tile.source}' not found` };
+            tile.source_data = {};
             return Promise.resolve(tile);
         }
     },

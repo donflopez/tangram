@@ -1,5 +1,4 @@
 // Manage rendering styles
-import Utils from '../utils/utils';
 import ShaderProgram from '../gl/shader_program';
 import mergeObjects from '../utils/merge';
 import Geo from '../geo';
@@ -109,9 +108,7 @@ export class StyleManager {
             sources = sources.map(x => styles[x]).filter(x => x && x !== style); // TODO: warning on trying to mix into self
 
             // Track which styles were mixed into this one
-            for (let s of sources) {
-                style.mixed[s.name] = true;
-            }
+            sources.forEach(s => style.mixed[s.name] = true);
         }
         sources.push(style);
 
@@ -209,7 +206,8 @@ export class StyleManager {
         // Mark all shader blocks for the target style as originating with its own name
         if (style.shaders && style.shaders.blocks) {
             style.shaders.block_scopes = style.shaders.block_scopes || {};
-            for (let [k, block] of Utils.entries(style.shaders.blocks)) {
+            for (let k in style.shaders.blocks) {
+                let block = style.shaders.blocks[k];
                 style.shaders.block_scopes[k] = style.shaders.block_scopes[k] || [];
                 if (Array.isArray(block)) {
                     style.shaders.block_scopes[k].push(...block.map(() => style.name));
@@ -222,16 +220,17 @@ export class StyleManager {
 
         // Merge shader blocks, keeping track of which style each block originated from
         let mixed = {}; // all scopes mixed so far
-        for (let source of shader_merges) {
+        shader_merges.forEach(source => {
             if (!source.blocks) {
-                continue;
+                return;
             }
 
             shaders.blocks = shaders.blocks || {};
             shaders.block_scopes = shaders.block_scopes || {};
             let mixed_source = {}; // scopes mixed for this source style
 
-            for (let [t, block] of Utils.entries(source.blocks)) {
+            for (let t in source.blocks) {
+                let block = source.blocks[t];
                 let block_scope = source.block_scopes[t];
 
                 shaders.blocks[t] = shaders.blocks[t] || [];
@@ -257,7 +256,7 @@ export class StyleManager {
             // Add styles mixed in from this source - they could be multi-level ancestors,
             // beyond the first-level "parents" defined in this style's `mix` list
             Object.assign(mixed, mixed_source);
-        }
+        });
 
         Object.assign(style.mixed, mixed); // add all newly mixed styles
 
@@ -308,9 +307,9 @@ export class StyleManager {
 
         // Working set of styles being built
         let ws = {};
-        for (let sname of style_deps) {
+        style_deps.forEach(sname => {
             ws[sname] = this.create(sname, styles[sname], ws);
-        }
+        });
 
         return this.styles;
     }
@@ -365,41 +364,6 @@ export class StyleManager {
             }
         }
         return parents;
-    }
-
-    // Compile all styles
-    compile (keys, scene) {
-        keys = keys || Object.keys(this.styles);
-        for (let key of keys) {
-            let style = this.styles[key];
-            try {
-                style.compile();
-                log('trace', `StyleManager.compile(): compiled style ${key}`);
-            }
-            catch(error) {
-                log('error', `StyleManager.compile(): error compiling style ${key}:`, error);
-
-                scene.trigger('warning', {
-                    type: 'styles',
-                    message: `Error compiling style ${key}`,
-                    style,
-                    shader_errors: style.program && style.program.shader_errors
-                });
-            }
-        }
-
-        log('debug', `StyleManager.compile(): compiled all styles`);
-    }
-
-    // Get all styles with mesh data for a given tile
-    static stylesForTile (tile_key, styles) {
-        let tile_styles = [];
-        for (let s in styles) {
-            if (styles[s].hasDataForTile(tile_key)) {
-                tile_styles.push(s);
-            }
-        }
-        return tile_styles;
     }
 
 }

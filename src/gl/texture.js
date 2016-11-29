@@ -127,10 +127,6 @@ export default class Texture {
             return;
         }
 
-        if (Texture.base_url) {
-            url = Utils.addBaseURL(url, Texture.base_url);
-        }
-
         this.url = url; // save URL reference (will be overwritten when element is loaded below)
         this.source = this.url;
         this.source_type = 'url';
@@ -349,12 +345,12 @@ Texture.release = function (name) {
 // Destroy all texture instances for a given GL context
 Texture.destroy = function (gl) {
     var textures = Object.keys(Texture.textures);
-    for (var t of textures) {
+    textures.forEach(t => {
         var texture = Texture.textures[t];
         if (texture.gl === gl) {
             texture.destroy({ force: true });
         }
-    }
+    });
 };
 
 // Get sprite pixel size and UVs
@@ -468,9 +464,9 @@ Texture.getInfo = function (name) {
 Texture.syncTexturesToWorker = function (names) {
     return WorkerBroker.postMessage('Texture.getInfo', names).
         then(textures => {
-            for (var tex of textures) {
+            textures.forEach(tex => {
                 Texture.textures[tex.name] = tex;
-            }
+            });
             return Texture.textures;
         });
 };
@@ -485,8 +481,6 @@ Texture.textures = {};
 Texture.texture_configs = {};
 Texture.boundTexture = null;
 Texture.activeUnit = null;
-
-Texture.base_url = null; // optional base URL to add to textures
 
 WorkerBroker.addTarget('Texture', Texture);
 subscribeMixin(Texture);

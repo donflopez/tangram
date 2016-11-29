@@ -36,9 +36,9 @@ export const TextLabels = {
         }
 
         // Compute text style and layout settings for this feature label
-        let layout = this.computeTextLayout({}, feature, draw, context, tile, text);
         let text_settings = TextSettings.compute(feature, draw, context);
         let text_settings_key = TextSettings.key(text_settings);
+        let layout = this.computeTextLayout({}, feature, draw, context, tile, text, text_settings);
 
         // first label in tile, or with this style?
         this.texts[tile.key] = this.texts[tile.key] || {};
@@ -241,14 +241,14 @@ export const TextLabels = {
         // Buffer (1d value or or 2d array)
         draw.buffer = StyleParser.createPropertyCache(draw.buffer, v => (Array.isArray(v) ? v : [v, v]).map(parseFloat) || 0);
 
-        // Repeat rules
-        draw.repeat_distance = StyleParser.createPropertyCache(draw.repeat_distance, parseFloat);
+        // Repeat rules - for text labels, defaults to tile size
+        draw.repeat_distance = StyleParser.createPropertyCache(draw.repeat_distance || Geo.tile_size, parseFloat);
 
         return draw;
     },
 
     // Additional text-specific layout settings
-    computeTextLayout (target, feature, draw, context, tile, text) {
+    computeTextLayout (target, feature, draw, context, tile, text, text_settings) {
         let layout = target || {};
 
         // common settings w/points
@@ -256,31 +256,22 @@ export const TextLabels = {
 
         // tile boundary handling
         layout.cull_from_tile = (draw.cull_from_tile != null) ? draw.cull_from_tile : true;
+
+        // standalone text can move into tile if specified
         layout.move_into_tile = (draw.move_into_tile != null) ? draw.move_into_tile : true;
 
-        // repeat minimum distance
-        layout.repeat_distance = StyleParser.evalCachedProperty(draw.repeat_distance, context);
-        if (layout.repeat_distance == null) {
-            layout.repeat_distance = Geo.tile_size;
+        // repeat rules include the text
+        if (layout.repeat_distance) {
+            layout.repeat_group += '/' + text;
         }
-        layout.repeat_distance *= layout.units_per_pixel;
-
-        // repeat group key
-        if (typeof draw.repeat_group === 'function') {
-            layout.repeat_group = draw.repeat_group(context);
-        }
-        else if (typeof draw.repeat_group === 'string') {
-            layout.repeat_group = draw.repeat_group;
-        }
-        else {
-            layout.repeat_group = draw.key; // default to unique set of matching layers
-        }
-        layout.repeat_group += '/' + text;
 
         // Max number of subdivisions to try
         layout.subdiv = tile.overzoom2;
 
         layout.align = draw.align;
+
+        // used to fudge width value as text may overflow bounding box if it has italic, bold, etc style
+        layout.italic = (text_settings.style !== 'normal');
 
         return layout;
     }

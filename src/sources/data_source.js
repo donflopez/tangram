@@ -2,6 +2,7 @@
 import Geo from '../geo';
 import {MethodNotImplemented} from '../utils/errors';
 import Utils from '../utils/utils';
+import * as URLs from '../utils/urls';
 
 export default class DataSource {
 
@@ -12,8 +13,14 @@ export default class DataSource {
         this.name = config.name;
         this.pad_scale = config.pad_scale || 0.0001; // scale tile up by small factor to cover seams
         this.default_winding = null; // winding order will adapt to data source
-        this.rasters = // attached raster tile sources
-            Array.isArray(config.rasters) ? [...new Set(config.rasters)] : []; // de-dupe with set conversion
+        this.rasters = []; // attached raster tile sources
+        if (Array.isArray(config.rasters)) { // copy unique set of raster sources
+            config.rasters.forEach(r => {
+                if (this.rasters.indexOf(r) === -1) {
+                    this.rasters.push(r);
+                }
+            });
+        }
 
         // Optional function to transform source data
         this.transform = config.transform;
@@ -152,7 +159,8 @@ export default class DataSource {
         }
 
         // Limit by any dependent raster sources
-        for (let source_name of this.rasters) {
+        for (let r=0; r < this.rasters.length; r++) {
+            const source_name = this.rasters[r];
             if (this.sources[source_name] &&
                 this.sources[source_name] !== this &&
                 !this.sources[source_name].includesTile(coords, coords.z)) {
@@ -183,7 +191,7 @@ export class NetworkSource extends DataSource {
 
     constructor (source, sources) {
         super(source, sources);
-        this.url = Utils.addParamsToURL(source.url, source.url_params);
+        this.url = URLs.addParamsToURL(source.url, source.url_params);
         this.response_type = ""; // use to set explicit XHR type
 
         if (this.url == null) {

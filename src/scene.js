@@ -1,5 +1,6 @@
 import log from './utils/log';
 import Utils from './utils/utils';
+import * as URLs from './utils/urls';
 import WorkerBroker from './utils/worker_broker';
 import subscribeMixin from './utils/subscribe';
 import Context from './gl/context';
@@ -47,7 +48,6 @@ export default class Scene {
         this.last_valid_config_source = null;
 
         this.styles = null;
-        this.active_styles = {};
         this.style_manager = new StyleManager();
 
         this.building = null;                           // tracks current scene building state (tiles being built, etc.)
@@ -86,15 +86,25 @@ export default class Scene {
         return new Scene(config, options);
     }
 
-    // Load (or reload) scene config
-    // Optionally specify new scene file URL
-    load(config_source = null, config_path = null) {
+    // Load scene (or reload existing scene if no new source specified)
+    // Options:
+    //   `config_path`: base URL against which roo scene resources should be resolved (useful for Play) (default nulll)
+    //   `blocking`: should rendering block on scene load completion (default true)
+    load(config_source = null, options = {}) {
         if (this.initializing) {
             return this.initializing;
         }
 
         this.updating++;
         this.initialized = false;
+
+        // Backwards compatibilty for passing `config_path` string as second argument
+        // (since transitioned to using options argument to accept more parameters)
+        options = (typeof options === 'string') ? { config_path: options } : options;
+        let config_path = options.config_path;
+
+        // Should rendering block on load (not desirable for initial load, often desired for live style-switching)
+        options.blocking = (options.blocking !== undefined) ? options.blocking : true;
 
         // Load scene definition (sources, styles, etc.), then create styles & workers
         this.createCanvas();
@@ -107,7 +117,10 @@ export default class Scene {
                 // which need to be serialized, while one loaded only from a URL does not.
                 const serialize_funcs = ((typeof this.config_source === 'object') || this.hasSubscribersFor('load'));
 
-                return this.updateConfig({ serialize_funcs, fade_in: true });
+                const updating = this.updateConfig({ serialize_funcs, fade_in: true });
+                if (options.blocking === true) {
+                    return updating;
+                }
             }).then(() => {
                 this.updating--;
                 this.initializing = null;
@@ -227,7 +240,7 @@ export default class Scene {
 
     // Get the URL to load the web worker from
     getWorkerUrl() {
-        let worker_url = this.worker_url || Utils.findCurrentURL('tangram.debug.js', 'tangram.min.js');
+        let worker_url = this.worker_url || URLs.findCurrentURL('tangram.debug.js', 'tangram.min.js');
 
         if (!worker_url) {
             throw new Error("Can't load worker because couldn't find base URL that library was loaded from");
@@ -240,7 +253,7 @@ export default class Scene {
         let urls = [...this.data_source_scripts];
         urls.push(worker_url); // load Tangram *last* (has been more reliable, though reason unknown)
         let body = `importScripts(${urls.map(url => `'${url}'`).join(',')});`;
-        return Utils.createObjectURL(new Blob([body], { type: 'application/javascript' }));
+        return URLs.createObjectURL(new Blob([body], { type: 'application/javascript' }));
     }
 
     // Update list of any custom data source scripts (if any)
@@ -310,7 +323,6 @@ export default class Scene {
             log.setWorkers(null);
             this.workers.forEach((worker) => {
                 worker.terminate();
-                WorkerBroker.removeWorker(worker);
             });
             this.workers = null;
         }
@@ -436,12 +448,7 @@ export default class Scene {
 
         // Update styles, camera, lights
         this.view.update();
-        Object.keys(this.active_styles).forEach(i => this.styles[i].update());
         Object.keys(this.lights).forEach(i => this.lights[i].update());
-
-        // Renderable tile list
-        this.renderable_tiles = this.tile_manager.getRenderableTiles();
-        this.renderable_tiles_count = this.renderable_tiles.length;
 
         // Render main pass
         this.render_count = this.renderPass();
@@ -488,8 +495,9 @@ export default class Scene {
         this.clearFrame({ clear_color: true, clear_depth: true });
 
         // Sort styles by blend order
-        let styles = Object.keys(this.active_styles).
+        let styles = this.tile_manager.getActiveStyles().
             map(s => this.styles[s]).
+            filter(s => s). // guard against missing styles, such as while loading a new scene
             sort(Style.blendOrderSort);
 
         // Render styles
@@ -497,6 +505,7 @@ export default class Scene {
         let last_blend;
         for (let s=0; s < styles.length; s++) {
             let style = styles[s];
+
             // Only update render state when blend mode changes
             if (style.blend !== last_blend) {
                 let state = Object.assign({},
@@ -512,20 +521,18 @@ export default class Scene {
         return count;
     }
 
-    renderStyle(style, program_key) {
+    renderStyle(style_name, program_key) {
+        let style = this.styles[style_name];
         let first_for_style = true;
         let render_count = 0;
-
-        let program = this.styles[style][program_key];
-        if (!program || !program.compiled) {
-            return 0;
-        }
+        let program;
 
         // Render tile GL geometries
-        for (let t=0; t < this.renderable_tiles.length; t++) {
-            let tile = this.renderable_tiles[t];
+        let renderable_tiles = this.tile_manager.getRenderableTiles();
+        for (let t=0; t < renderable_tiles.length; t++) {
+            let tile = renderable_tiles[t];
 
-            if (tile.meshes[style] == null) {
+            if (tile.meshes[style_name] == null) {
                 continue;
             }
 
@@ -534,20 +541,15 @@ export default class Scene {
             // (lazy init, not all styles will be used in all screen views; some styles might be defined but never used)
             if (first_for_style === true) {
                 first_for_style = false;
-
-                program.use();
-                this.styles[style].setup();
-
-                program.uniform('1f', 'u_time', this.animated ? (((+new Date()) - this.start_time) / 1000) : 0);
-                this.view.setupProgram(program);
-                for (let i in this.lights) {
-                    this.lights[i].setupProgram(program);
+                program = this.setupStyle(style, program_key);
+                if (!program) {
+                    return 0;
                 }
             }
 
             // Skip proxy tiles if new tiles have finished loading this style
-            if (!tile.shouldProxyForStyle(style)) {
-                // log('trace', `Scene.renderStyle(): Skip proxy tile for style '${style}' `, tile, tile.proxy_for);
+            if (!tile.shouldProxyForStyle(style_name)) {
+                // log('trace', `Scene.renderStyle(): Skip proxy tile for style '${style_name}' `, tile, tile.proxy_for);
                 continue;
             }
 
@@ -555,16 +557,48 @@ export default class Scene {
             this.view.setupTile(tile, program);
 
             // Render tile
-            if (this.styles[style].render(tile.meshes[style])) {
+            let mesh = tile.meshes[style_name];
+            if (style.render(mesh)) {
                 // Don't incur additional renders while viewport is moving
                 if (!(this.view.panning || this.view.zooming)) {
                    this.requestRedraw();
                 }
             }
-            render_count += tile.meshes[style].geometry_count;
+            render_count += mesh.geometry_count;
         }
 
         return render_count;
+    }
+
+    setupStyle(style, program_key) {
+        // Get shader program from style, lazily compiling if necessary
+        let program;
+        try {
+            program = style.getProgram(program_key);
+            if (!program) {
+                return;
+            }
+        }
+        catch(error) {
+            this.trigger('warning', {
+                type: 'styles',
+                message: `Error compiling style ${style.name}`,
+                style,
+                shader_errors: style.program && style.program.shader_errors
+            });
+            return;
+        }
+
+        program.use();
+        style.setup();
+
+        program.uniform('1f', 'u_time', this.animated ? (((+new Date()) - this.start_time) / 1000) : 0);
+        this.view.setupProgram(program);
+        for (let i in this.lights) {
+            this.lights[i].setupProgram(program);
+        }
+
+        return program;
     }
 
     clearFrame({ clear_color, clear_depth } = {}) {
@@ -703,7 +737,6 @@ export default class Scene {
             // Update config (in case JS objects were manipulated directly)
             if (sync) {
                 this.syncConfigToWorker({ serialize_funcs });
-                this.style_manager.compile(this.updateActiveStyles(), this); // only recompile newly active styles
             }
             this.resetFeatureSelection();
             this.resetTime();
@@ -753,10 +786,10 @@ export default class Scene {
         this.config_globals_applied = [];
 
         if (typeof this.config_source === 'string') {
-            this.config_path = Utils.pathForURL(config_path || this.config_source);
+            this.config_path = URLs.pathForURL(config_path || this.config_source);
         }
         else {
-            this.config_path = Utils.pathForURL(config_path);
+            this.config_path = URLs.pathForURL(config_path);
         }
 
         return SceneLoader.loadScene(this.config_source, this.config_path).then(config => {
@@ -789,7 +822,7 @@ export default class Scene {
         let source = this.config.sources[name] = Object.assign({}, config);
 
         if (source.data && typeof source.data === 'object') {
-            source.url = Utils.createObjectURL(new Blob([JSON.stringify(source.data)]));
+            source.url = URLs.createObjectURL(new Blob([JSON.stringify(source.data)]));
             delete source.data;
         }
 
@@ -828,12 +861,12 @@ export default class Scene {
         }
 
         // Sources that were removed
-        for (let s of prev_source_names) {
+        prev_source_names.forEach(s => {
             if (!this.config.sources[s]) {
                 delete this.sources[s]; // TODO: remove from workers too?
                 reset.push(s);
             }
-        }
+        });
 
         // Remove tiles from sources that have changed
         if (reset.length > 0) {
@@ -844,7 +877,8 @@ export default class Scene {
 
         // Mark sources that will generate geometry tiles
         // (all except those that are only raster sources attached to other sources)
-        for (let layer of Utils.values(this.config.layers)) {
+        for (let ln in this.config.layers) {
+            let layer = this.config.layers[ln];
             if (layer.data && this.sources[layer.data.source]) {
                 this.sources[layer.data.source].builds_geometry_tiles = true;
             }
@@ -868,56 +902,17 @@ export default class Scene {
         this.style_manager.initStyles(this);
 
         // Optionally set GL context (used when initializing or re-initializing GL resources)
-        for (var style of Utils.values(this.styles)) {
-            style.setGL(this.gl);
+        for (let style in this.styles) {
+            this.styles[style].setGL(this.gl);
         }
 
-        // Find & compile active styles
-        this.updateActiveStyles();
-        this.style_manager.compile(Object.keys(this.active_styles), this);
+        // Use explicitly set scene animation flag if defined, otherwise turn on animation if there are any animated styles
+        this.animated =
+            this.config.scene.animated !== undefined ?
+                this.config.scene.animated :
+                Object.keys(this.styles).some(s => this.styles[s].animated);
 
         this.dirty = true;
-    }
-
-    updateActiveStyles() {
-        // Make a set of currently active styles (used in a layer)
-        // Note: doesn't actually check if any geometry matches the layer, just that the style is potentially renderable
-        let prev_styles = Object.keys(this.active_styles || {});
-        this.active_styles = {};
-        let animated = false; // is any active style animated?
-        for (let layer of Utils.recurseValues(this.config.layers)) {
-            if (layer && layer.draw) {
-                for (let [name, group] of Utils.entries(layer.draw)) {
-                    // TODO: warn on non-object draw group
-                    if (group != null && typeof group === 'object' && group.visible !== false) {
-                        let style_name = group.style || name;
-                        let styles = [style_name];
-
-                        // optional additional outline style
-                        if (group.outline && group.outline.style) {
-                            styles.push(group.outline.style);
-                        }
-
-                        styles = styles.filter(x => this.styles[x]).forEach(style_name => {
-                            let style = this.styles[style_name];
-                            if (style) {
-                                this.active_styles[style_name] = true;
-                                if (style.animated) {
-                                    animated = true;
-                                }
-                            }
-                        });
-                    }
-                }
-            }
-        }
-
-        // Use explicitly set scene animation flag if defined, otherwise turn on animation
-        // if there are any animated styles
-        this.animated = this.config.scene.animated !== undefined ? this.config.scene.animated : animated;
-
-        // Compile newly active styles
-        return Object.keys(this.active_styles).filter(s => prev_styles.indexOf(s) === -1);
     }
 
     // Get active camera - for public API
@@ -973,7 +968,8 @@ export default class Scene {
     // Turn introspection mode on/off
     setIntrospection (val) {
         this.introspection = val || false;
-        this.updateConfig();
+        this.updating++;
+        return this.updateConfig().then(() => this.updating--);
     }
 
     // Update scene config, and optionally rebuild geometry
@@ -983,6 +979,7 @@ export default class Scene {
         this.updating++;
 
         this.config = SceneLoader.applyGlobalProperties(this.config, this.config_globals_applied);
+        SceneLoader.hoistTextures(this.config); // move inline textures into global texture set
         this.style_manager.init();
         this.view.reset();
         this.createLights();
@@ -1000,11 +997,11 @@ export default class Scene {
             this.syncConfigToWorker({ serialize_funcs }); // rebuild() also syncs config
 
         // Finish by updating bounds and re-rendering
-        return done.then(() => {
-            this.updating--;
-            this.view.updateBounds();
-            this.requestRedraw();
-        });
+        this.updating--;
+        this.view.updateBounds();
+        this.requestRedraw();
+
+        return done;
     }
 
     // Serialize config and send to worker
@@ -1147,12 +1144,12 @@ export default class Scene {
             // Return geometry counts of visible tiles, grouped by style name
             geometryCountByStyle () {
                 let counts = {};
-                for (let tile of scene.tile_manager.getRenderableTiles()) {
+                scene.tile_manager.getRenderableTiles().forEach(tile => {
                     for (let style in tile.meshes) {
                         counts[style] = counts[style] || 0;
                         counts[style] += tile.meshes[style].geometry_count;
                     }
-                }
+                });
                 return counts;
             },
 

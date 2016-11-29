@@ -13,6 +13,8 @@ export default class TileManager {
         this.visible_coords = {};
         this.queued_coords = [];
         this.building_tiles = null;
+        this.renderable_tiles = [];
+        this.active_styles = [];
 
         // Provide a hook for this object to be called from worker threads
         this.main_thread_target = ['TileManager', this.scene.id].join('_');
@@ -89,7 +91,8 @@ export default class TileManager {
         let prev_coords = Object.keys(this.visible_coords);
         this.visible_coords = {};
         let tile_coords = this.view.findVisibleTileCoordinates();
-        for (let coords of tile_coords) {
+        for (let c=0; c < tile_coords.length; c++) {
+            const coords = tile_coords[c];
             this.queueCoordinate(coords);
             this.visible_coords[coords.key] = coords;
         }
@@ -121,6 +124,8 @@ export default class TileManager {
         this.loadQueuedCoordinates();
         this.updateProxyTiles();
         this.view.pruneTilesForView();
+        this.updateRenderableTiles();
+        this.updateActiveStyles();
     }
 
     updateProxyTiles () {
@@ -135,18 +140,18 @@ export default class TileManager {
         this.forEachTile(tile => {
             if (this.view.zoom_direction === 1) {
                 if (tile.visible && !tile.built && tile.coords.z > 0) {
-                    let p = this.pyramid.getAncestor(tile);
-                    if (p) {
-                        p.setProxyFor(tile);
+                    const parent = this.pyramid.getAncestor(tile);
+                    if (parent) {
+                        parent.setProxyFor(tile);
                         proxy = true;
                     }
                 }
             }
             else if (this.view.zoom_direction === -1) {
                 if (tile.visible && !tile.built) {
-                    let d = this.pyramid.getDescendants(tile);
-                    for (let t of d) {
-                        t.setProxyFor(tile);
+                    const descendants = this.pyramid.getDescendants(tile);
+                    for (let i=0; i < descendants.length; i++) {
+                        descendants[i].setProxyFor(tile);
                         proxy = true;
                     }
                 }
@@ -181,15 +186,34 @@ export default class TileManager {
         this.removeTiles(tile => !tile.visible);
     }
 
-    getRenderableTiles() {
-        let tiles = [];
+    getRenderableTiles () {
+        return this.renderable_tiles;
+    }
+
+    updateRenderableTiles() {
+        this.renderable_tiles = [];
         for (let t in this.tiles) {
             let tile = this.tiles[t];
             if (tile.visible && tile.loaded) {
-                tiles.push(tile);
+                this.renderable_tiles.push(tile);
             }
         }
-        return tiles;
+        return this.renderable_tiles;
+    }
+
+    getActiveStyles () {
+        return this.active_styles;
+    }
+
+    updateActiveStyles () {
+        let tiles = this.renderable_tiles;
+        let active = {};
+        for (let t=0; t < tiles.length; t++) {
+            let tile = tiles[t];
+            Object.keys(tile.meshes).forEach(s => active[s] = true);
+        }
+        this.active_styles = Object.keys(active);
+        return this.active_styles;
     }
 
     isLoadingVisibleTiles() {

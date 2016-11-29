@@ -6,11 +6,6 @@ var Collision;
 export default Collision = {
 
     tiles: {},
-    link_id: 0,
-
-    nextLinkId() {
-        return this.link_id++;
-    },
 
     startTile (tile) {
         let state = this.tiles[tile] = {
@@ -20,7 +15,7 @@ export default Collision = {
             },
             objects: {},        // objects to collide, grouped by priority, then by style
             keep: {},           // objects that were kept after collision, grouped by style
-            styles: new Set()   // styles contributing collision objects
+            styles: {}          // styles contributing collision objects
         };
 
         // Promise resolved when all registered styles have added objects
@@ -36,7 +31,7 @@ export default Collision = {
 
     // Add a style to the pending set, collision will block on all styles submitting to collision set
     addStyle (style, tile) {
-        this.tiles[tile].styles.add(style);
+        this.tiles[tile].styles[style] = true;
     },
 
     // Add collision objects for a style
@@ -58,8 +53,8 @@ export default Collision = {
         }
 
         // Remove from pending style set, if no more styles, do collision & finish tile
-        state.styles.delete(style);
-        if (state.styles.size === 0) {
+        delete state.styles[style];
+        if (Object.keys(state.styles).length === 0) {
             this.endTile(tile);
         }
 
@@ -79,8 +74,8 @@ export default Collision = {
 
         // Process labels by priority, then by style
         let priorities = Object.keys(state.objects).sort((a, b) => a - b);
-        for (let priority of priorities) {
-            let style_objects = state.objects[priority];
+        for (let p=0; p < priorities.length; p++) {
+            let style_objects = state.objects[priorities[p]];
             if (!style_objects) { // no labels at this priority, skip to next
                 continue;
             }

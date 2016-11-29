@@ -36,10 +36,10 @@ export default class LabelPoint extends Label {
             this.offset = PointAnchor.computeOffset(this.offset, parent.size, parent.anchor, PointAnchor.zero_buffer);
             this.offset = PointAnchor.computeOffset(this.offset, parent.size, this.anchor, PointAnchor.zero_buffer);
             if (parent.offset !== StyleParser.zeroPair) {        // point has an offset
-                if (this.offset === StyleParser.zeroPair) { // no text offset, use point's
+                if (this.offset === StyleParser.zeroPair) {      // no text offset, use point's
                     this.offset = parent.offset;
                 }
-                else {                                          // text has offset, add point's
+                else {                                           // text has offset, add point's
                     this.offset[0] += parent.offset[0];
                     this.offset[1] += parent.offset[1];
                 }
@@ -52,6 +52,11 @@ export default class LabelPoint extends Label {
     updateBBoxes () {
         let width = (this.size[0] + this.layout.buffer[0] * 2) * this.layout.units_per_pixel * Label.epsilon;
         let height = (this.size[1] + this.layout.buffer[1] * 2) * this.layout.units_per_pixel * Label.epsilon;
+
+        // fudge width value as text may overflow bounding box if it has italic, bold, etc style
+        if (this.layout.italic){
+            width += 5 * this.layout.units_per_pixel;
+        }
 
         let p = [
             this.position[0] + (this.offset[0] * this.layout.units_per_pixel),
@@ -99,7 +104,7 @@ export default class LabelPoint extends Label {
             return true;
         }
 
-        if (this.layout.move_into_tile) {
+        if (this.layout.move_into_tile){
             this.moveIntoTile();
             return true;
         }
@@ -117,6 +122,7 @@ export default class LabelPoint extends Label {
                     }
                 }
             }
+
             // no anchors result in fit
             return false;
         }
@@ -146,3 +152,11 @@ export default class LabelPoint extends Label {
     }
 
 }
+
+// Placement strategies
+LabelPoint.PLACEMENT = {
+    VERTEX: 0,          // place labels at endpoints of line segments
+    MIDPOINT: 1,        // place labels at midpoints of line segments
+    SPACED: 2,          // place labels equally spaced along line
+    CENTROID: 3         // place labels at center of polygons
+};
