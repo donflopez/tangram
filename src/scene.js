@@ -331,10 +331,21 @@ export default class Scene {
         }
     }
 
-    // Round robin selection of next worker
-    nextWorker() {
-        var worker = this.workers[this.next_worker];
-        this.next_worker = (this.next_worker + 1) % this.workers.length;
+    // Assign tile to worker thread based on data source
+    getWorkerForDataSource(source) {
+        let worker;
+
+        if (source.tiled) {
+            // Round robin tiled sources across all workers
+            worker = this.workers[this.next_worker];
+            this.next_worker = (this.next_worker + 1) % this.workers.length;
+        }
+        else {
+            // Pin all tiles from each non-tiled source to a single worker
+            // Prevents data for these sources from being loaded more than once
+            worker = this.workers[source.id % this.workers.length];
+        }
+
         return worker;
     }
 
@@ -650,8 +661,7 @@ export default class Scene {
             // Opaque: all source, no destination
             if (blend === 'opaque') {
                 render_states.blending.set({
-                    blend: true,
-                    src: gl.SRC_ALPHA, dst: gl.ZERO
+                    blend: false
                 });
             }
             // Traditional alpha blending
@@ -666,16 +676,14 @@ export default class Scene {
             else if (blend === 'add') {
                 render_states.blending.set({
                     blend: true,
-                    src: gl.ONE, dst: gl.ONE,
-                    src_alpha: gl.ONE, dst_alpha: gl.ONE_MINUS_SRC_ALPHA
+                    src: gl.ONE, dst: gl.ONE
                 });
             }
             // Multiplicative blending
             else if (blend === 'multiply') {
                 render_states.blending.set({
                     blend: true,
-                    src: gl.ZERO, dst: gl.SRC_COLOR,
-                    src_alpha: gl.ONE, dst_alpha: gl.ONE_MINUS_SRC_ALPHA
+                    src: gl.ZERO, dst: gl.SRC_COLOR
                 });
             }
         }
