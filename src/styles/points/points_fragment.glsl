@@ -20,6 +20,7 @@ varying float v_sampler;
 varying vec4 v_color;
 varying vec2 v_texcoord;
 varying vec4 v_world_position;
+varying float v_border;
 
 #define TANGRAM_NORMAL vec3(0., 0., 1.)
 
@@ -95,6 +96,17 @@ void main (void) {
     #endif
 
     #pragma tangram: filter
+
+    vec2 uv = v_texcoord * 2. - 1.; // fade alpha near circle edge
+    float point_dist = length(uv);
+
+    color = mix(color, vec4(1.), step(1. - v_border, point_dist));
+
+    // if (v_border == 0.) {
+    //   color = vec4(1.);
+    // }
+    // color = mix(color, vec4(1.), ((point_dist - TANGRAM_FADE_START) / TANGRAM_FADE_RANGE) * abs(sin(u_time)));
+    // color = mix(color, vec4(1.), point_dist - abs(sin(u_time * 2.)));
 
     gl_FragColor = color;
 }

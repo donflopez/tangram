@@ -45,7 +45,8 @@ Object.assign(Points, {
             { name: 'a_shape', size: 4, type: gl.SHORT, normalized: false },
             { name: 'a_texcoord', size: 2, type: gl.UNSIGNED_SHORT, normalized: true },
             { name: 'a_offset', size: 2, type: gl.SHORT, normalized: false },
-            { name: 'a_color', size: 4, type: gl.UNSIGNED_BYTE, normalized: true }
+            { name: 'a_color', size: 4, type: gl.UNSIGNED_BYTE, normalized: true },
+            { name: 'a_border', size: 1, type: gl.FLOAT, normalized: true}
         ];
 
         // Feature selection
@@ -119,6 +120,7 @@ Object.assign(Points, {
         let style = {};
         style.color = this.parseColor(draw.color, context);
 
+        style.border = StyleParser.createPropertyCache(draw.border, v => Array.isArray(v) ? v.map(parseFloat) : parseFloat(v));
         // Point styling
 
         // require color or texture
@@ -352,7 +354,11 @@ Object.assign(Points, {
     },
 
     _preprocess (draw) {
+
         draw.color = StyleParser.createColorPropertyCache(draw.color);
+
+        draw.border = StyleParser.createPropertyCache(draw.border, v => Array.isArray(v) ? v.map(parseFloat) : parseFloat(v));
+        console.log(draw.border, draw.color);
         draw.z = StyleParser.createPropertyCache(draw.z, StyleParser.parseUnits);
 
         // Size (1d value or 2d array)
@@ -563,6 +569,9 @@ Object.assign(Points, {
 
         // color
         this.fillVertexTemplate('a_color', Vector.mult(color, 255), { size: 4 });
+
+        // border
+        this.fillVertexTemplate('a_border', style.border.value || 1., { size: 1 });
 
         // selection color
         if (this.selection) {
