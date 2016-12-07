@@ -107,12 +107,12 @@ export default class Light {
 
                 #ifdef TANGRAM_MATERIAL_EMISSION
                     color.rgb = material.emission.rgb;
-                    color.a *= material.emission.a;
+                    color.a *= _color.a * material.emission.a;
                 #endif
 
                 #ifdef TANGRAM_MATERIAL_AMBIENT
                     color.rgb += light_accumulator_ambient.rgb * _color.rgb * material.ambient.rgb;
-                    color.a *= material.ambient.a;
+                    color.a *= _color.a * material.ambient.a;
                 #else
                     #ifdef TANGRAM_MATERIAL_DIFFUSE
                         color.rgb += light_accumulator_ambient.rgb * _color.rgb * material.diffuse.rgb;
@@ -121,16 +121,17 @@ export default class Light {
 
                 #ifdef TANGRAM_MATERIAL_DIFFUSE
                     color.rgb += light_accumulator_diffuse.rgb * _color.rgb * material.diffuse.rgb;
-                    color.a *= material.diffuse.a;
+                    color.a *= _color.a * material.diffuse.a;
                 #endif
 
                 #ifdef TANGRAM_MATERIAL_SPECULAR
                     color.rgb += light_accumulator_specular.rgb * material.specular.rgb;
-                    color.a *= material.specular.a;
+                    color.a *= _color.a * material.specular.a;
                 #endif
 
                 // Clamp final color
                 color = clamp(color, 0.0, 1.0);
+                // color = vec4(color.a);
 
                 return color;
             }`;

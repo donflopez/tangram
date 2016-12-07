@@ -20,7 +20,8 @@ varying float v_sampler;
 varying vec4 v_color;
 varying vec2 v_texcoord;
 varying vec4 v_world_position;
-varying float v_border;
+varying vec4 v_border_color;
+varying float v_border_size;
 
 #define TANGRAM_NORMAL vec3(0., 0., 1.)
 
@@ -99,8 +100,9 @@ void main (void) {
 
     vec2 uv = v_texcoord * 2. - 1.; // fade alpha near circle edge
     float point_dist = length(uv);
-
-    color = mix(color, vec4(1.), step(1. - v_border, point_dist));
+    point_dist = (point_dist > 1.) ? .0 : point_dist;
+    color = mix(color, v_border_color, step(1. - v_border_size, point_dist));
+    // color = vec4(vec3(clamp(v_border_size, 0., 1.)), 1.);
 
     // if (v_border == 0.) {
     //   color = vec4(1.);

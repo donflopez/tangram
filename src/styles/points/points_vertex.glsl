@@ -17,7 +17,8 @@ uniform mat3 u_inverseNormalMatrix;
 attribute vec4 a_position;
 attribute vec4 a_shape;
 attribute vec4 a_color;
-attribute float a_border;
+attribute float a_border_size;
+attribute vec4 a_border_color;
 attribute vec2 a_texcoord;
 attribute vec2 a_offset;
 
@@ -26,7 +27,8 @@ attribute vec2 a_offset;
 varying vec4 v_color;
 varying vec2 v_texcoord;
 varying vec4 v_world_position;
-varying float v_border;
+varying float v_border_size;
+varying vec4 v_border_color;
 
 #ifdef TANGRAM_MULTI_SAMPLER
 varying float v_sampler;
@@ -49,7 +51,8 @@ void main() {
 
     v_color = a_color;
     v_texcoord = a_texcoord;
-    v_border = a_border;
+    v_border_color = a_border_color;
+    v_border_size = a_border_size;
 
     // Position
     vec4 position = u_modelView * vec4(a_position.xyz, 1.);
@@ -98,6 +101,6 @@ void main() {
             position.xy = position_snap;
         #endif
     }
-
+    // v_border_size = position.z >= .9 ? 1. : 0.;
     gl_Position = position;
 }

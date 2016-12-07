@@ -46,7 +46,8 @@ Object.assign(Points, {
             { name: 'a_texcoord', size: 2, type: gl.UNSIGNED_SHORT, normalized: true },
             { name: 'a_offset', size: 2, type: gl.SHORT, normalized: false },
             { name: 'a_color', size: 4, type: gl.UNSIGNED_BYTE, normalized: true },
-            { name: 'a_border', size: 1, type: gl.FLOAT, normalized: true}
+            { name: 'a_border_color', size: 4, type: gl.UNSIGNED_BYTE, normalized: true},
+            { name: 'a_border_size', size: 1, type: gl.FLOAT, normalized: true}
         ];
 
         // Feature selection
@@ -120,7 +121,8 @@ Object.assign(Points, {
         let style = {};
         style.color = this.parseColor(draw.color, context);
 
-        style.border = StyleParser.createPropertyCache(draw.border, v => Array.isArray(v) ? v.map(parseFloat) : parseFloat(v));
+        style.border_size = StyleParser.createPropertyCache(draw.border_size, v => Array.isArray(v) ? v.map(parseFloat) : parseFloat(v));
+        style.border_color = this.parseColor(draw.border_color, context);
         // Point styling
 
         // require color or texture
@@ -356,8 +358,9 @@ Object.assign(Points, {
 
         draw.color = StyleParser.createColorPropertyCache(draw.color);
 
-        draw.border = StyleParser.createPropertyCache(draw.border, v => Array.isArray(v) ? v.map(parseFloat) : parseFloat(v));
-        console.log(draw.border, draw.color);
+        draw.border_color = StyleParser.createColorPropertyCache(draw.border_color);
+        draw.border_size = StyleParser.createPropertyCache(draw.border_size, v => Array.isArray(v) ? v.map(parseFloat) : parseFloat(v));
+
         draw.z = StyleParser.createPropertyCache(draw.z, StyleParser.parseUnits);
 
         // Size (1d value or 2d array)
@@ -550,7 +553,7 @@ Object.assign(Points, {
      */
     makeVertexTemplate(style) {
         let color = style.color || StyleParser.defaults.color;
-
+        let borderColor = style.border_color || [0.,0.,0.,0.];
         // position - x & y coords will be filled in per-vertex below
         this.fillVertexTemplate('a_position', 0, { size: 2 });
         this.fillVertexTemplate('a_position', style.z || 0, { size: 1, offset: 2 });
@@ -570,7 +573,8 @@ Object.assign(Points, {
         this.fillVertexTemplate('a_color', Vector.mult(color, 255), { size: 4 });
 
         // border
-        this.fillVertexTemplate('a_border', style.border.value || 1., { size: 1 });
+        this.fillVertexTemplate('a_border_color', Vector.mult(borderColor, 255), { size: 4 });
+        this.fillVertexTemplate('a_border_size', style.border_size.value || 0., { size: 1 });
 
         // selection color
         if (this.selection) {
